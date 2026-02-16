@@ -9,6 +9,73 @@ Private Enum columns
     Comments
 End Enum
 
+Function Sanitize(s As String) As String
+    Dim result As String
+    result = Replace(s, "\", "\\")
+    result = Replace(result, Chr(10), "\n")
+    result = Replace(result, Chr(13), "\r")
+    Sanitize = result
+End Function
+
+Function Desanitize(s As String) As String
+    Dim result As String
+    result = Replace(s, "\r", Chr(13))
+    result = Replace(result, "\n", Chr(10))
+    result = Replace(result, "\\", "\")
+    Desanitize = result
+End Function
+
+Function qualifyText(s As String, Optional delim As String = ",", Optional qualifier As String = """") As String
+    Dim result As String
+    result = Replace(s, qualifier, qualifier & qualifier)
+    If InStr(result, delim) <> 0 Then
+        result = qualifier & result & qualifier
+    End If
+    qualifyText = result
+End Function
+
+Function splitTextWithQualifiers(s As String, Optional delim As String = ",", Optional qualifier As String = """") As Variant
+    Dim i As Integer
+    Dim coll As Collection
+    Dim accumulator As String
+    Dim inQuote As Boolean
+    Dim char As String
+    
+    Set coll = New Collection
+    accumulator = ""
+    i = 1
+    While i <= Len(s)
+        char = Mid(s, i, 1)
+        If char = qualifier Then
+            If i < Len(s) And Mid(s, i + 1, 1) = qualifier Then
+                i = i + 1
+                accumulator = accumulator & qualifier
+            Else
+                inQuote = Not inQuote
+            End If
+        ElseIf char = delim Then
+            If inQuote Then
+                accumulator = accumulator & char
+            Else
+                coll.Add accumulator
+                accumulator = ""
+            End If
+        Else
+            accumulator = accumulator & char
+        End If
+        i = i + 1
+    Wend
+    coll.Add accumulator
+    
+    Dim result() As Variant
+    ReDim result(0 To coll.Count - 1)
+    For i = 1 To coll.Count
+        result(i - 1) = coll.Item(i)
+    Next i
+    
+    splitTextWithQualifiers = result
+    
+End Function
 
 ' Import named ranges from csv file
 ' Existing ranges with the same identifier will be replaced.
@@ -38,7 +105,7 @@ End Sub
 
 Private Sub importName(wb As Workbook, line As String)
     Dim parts As Variant
-    parts = Split(line, ",")
+    parts = splitTextWithQualifiers(Desanitize(line), ",")
     Dim rangeName As String, rangeAddress As String, comment As String
     rangeName = parts(columns.name)
     rangeAddress = parts(columns.RefersTo)
@@ -64,7 +131,7 @@ Public Sub exportNamedRanges(wb As Workbook)
     For Each t In wb.Names
         Set aName = t
         If hasValidRange(aName) Then
-            lines.Add aName.name & "," & aName.RefersTo & "," & aName.comment
+            lines.Add Sanitize(qualifyText(aName.name) & "," & qualifyText(aName.RefersTo) & "," & qualifyText(aName.comment))
         End If
     Next
     If lines.Count > 0 Then
@@ -108,3 +175,4 @@ Public Sub removeInvalidNamedRanges(wb As Workbook)
         End If
     Next
 End Sub
+
